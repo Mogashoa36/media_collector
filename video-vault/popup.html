@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VideoVault</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#all" aria-label="VideoVault home"><span class="brand-mark" aria-hidden="true"><span></span></span><span>Video<span>Vault</span></span></a>
+        <div class="header-actions"><button class="icon-button" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">☼</button><button class="icon-button" id="settings-button" title="Settings" aria-label="Settings">⚙</button></div>
+      </header>
+      <section class="search-row" aria-label="Search saved videos"><span class="search-icon" aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="Search saved videos..." autocomplete="off" /><kbd>/</kbd></section>
+      <nav class="view-nav" aria-label="Video views"><button class="nav-item active" data-view="all">All videos <b id="video-count">0</b></button><button class="nav-item" data-view="favorites">Favorites <b id="favorite-count">0</b></button><button class="nav-item" data-view="collections">Collections</button></nav>
+      <section class="toolbar"><div><span class="eyebrow" id="view-label">YOUR LIBRARY</span><span class="result-count" id="result-count"></span></div><select id="sort-select" aria-label="Sort videos"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="az">A-Z</option><option value="favorites">Favorites first</option></select></section>
+      <section id="gallery" class="gallery" aria-live="polite"></section>
+      <button id="save-button" class="save-button"><span>＋</span> Save Current Video</button>
+    </main>
+    <div id="toast" class="toast" role="status"></div><div id="modal-root"></div>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

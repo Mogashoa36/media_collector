@@ -1,0 +1,11 @@
+export const MOCK_VIDEOS = [
+  { id: 'mock-1', title: 'Spring Boot Microservices Tutorial', url: 'https://www.youtube.com/watch?v=demo-spring', thumbnail: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=900&q=80', platform: 'YouTube', savedAt: '2026-09-04T01:00:00', favorite: true, collections: ['Java', 'Tutorials'] },
+  { id: 'mock-2', title: 'Build a Calm, Focused Workspace', url: 'https://vimeo.com/76979871', thumbnail: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=900&q=80', platform: 'Vimeo', savedAt: '2026-09-02T12:30:00', favorite: false, collections: ['Entertainment'] },
+  { id: 'mock-3', title: 'Angular Signals in 15 Minutes', url: 'https://www.youtube.com/watch?v=demo-angular', thumbnail: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=900&q=80', platform: 'YouTube', savedAt: '2026-08-28T09:15:00', favorite: false, collections: ['Angular', 'Tutorials'] },
+  { id: 'mock-4', title: 'A Walk Through Tokyo at Night', url: 'https://www.tiktok.com/@videovault/video/demo', thumbnail: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=900&q=80', platform: 'TikTok', savedAt: '2026-08-21T18:00:00', favorite: true, collections: ['Entertainment'] }
+];
+export function detectPlatform(url = '') { const host = url.toLowerCase(); if (host.includes('youtube.com') || host.includes('youtu.be')) return 'YouTube'; if (host.includes('tiktok.com')) return 'TikTok'; if (host.includes('instagram.com')) return 'Instagram'; if (host.includes('facebook.com') || host.includes('fb.watch')) return 'Facebook'; if (host.includes('reddit.com')) return 'Reddit'; if (host.includes('twitter.com') || host.includes('x.com')) return 'X / Twitter'; if (host.includes('vimeo.com')) return 'Vimeo'; return 'Other'; }
+export function formatDate(date) { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date)); }
+export function escapeHtml(value = '') { return value.replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
+export function makeId() { return `video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
+export function thumbnailFor(url) { return `https://image.thum.io/get/width/900/crop/600/${encodeURIComponent(url)}`; }
