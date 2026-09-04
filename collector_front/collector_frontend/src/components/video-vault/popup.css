@@ -20,3 +20,13 @@ body.light-theme { --bg: #f5f5f5; --panel: #fff; --panel-2: #e9e9e9; --ink: #111
 .toast { color: #fff; border-color: #666; background: #222; }
 .delete-button { color: #bbb; }
 .danger-button { color: #fff; border: 1px solid #888; background: #111; }
+.save-link-modal { position: relative; max-width: 430px; text-align: left; }
+.save-link-modal h2 { margin-bottom: 20px; }
+.save-link-modal form { display: grid; gap: 7px; }
+.save-link-modal label { color: var(--muted); font-size: 11px; font-weight: 700; }
+.save-link-modal label span { color: #777; font-weight: 400; }
+.save-link-modal input { width: 100%; min-height: 40px; padding: 0 11px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; outline: 0; background: var(--bg); }
+.save-link-modal input:focus { border-color: var(--accent); }
+.save-link-modal input + label { margin-top: 8px; }
+.save-link-modal .primary-button { margin-top: 8px; }
+.form-error { min-height: 17px; margin: 4px 0 0; color: #e47f7c; font-size: 11px; }
