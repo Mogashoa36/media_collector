@@ -39,7 +39,7 @@ export async function extractMetadata(url, pageUrl = url) {
     domain: new URL(url).hostname.replace(/^www\./, ''),
     videoId: platformVideoId(canonical),
     creator: { name: jsonLd.creatorName || meta(document, 'author'), username: '', profileUrl: jsonLd.creatorUrl || '' },
-    video: { duration: duration(durationValue), width, height, aspectRatio: width && height ? Number((width / height).toFixed(3)) : null, format: '', mimeType: video?.currentSrc ? '', quality: width && height ? `${width}x${height}` : '', frameRate: null, bitrate: null },
+    video: { duration: duration(durationValue), width, height, aspectRatio: width && height ? Number((width / height).toFixed(3)) : null, format: '', mimeType: '', quality: width && height ? `${width}x${height}` : '', frameRate: null, bitrate: null },
     thumbnail,
     engagement: { views: jsonLd.views || null, likes: jsonLd.likes || null, comments: jsonLd.comments || null, shares: null },
     publication: { publishedAt: jsonLd.publishedAt || meta(document, 'article:published_time') || null },
