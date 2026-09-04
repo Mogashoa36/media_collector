@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: media-collector-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: media_collector
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - media-collector-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  media-collector-postgres-data:
