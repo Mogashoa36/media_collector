@@ -46,6 +46,7 @@ export async function extractMetadata(url, pageUrl = url) {
     tags: (meta(document, 'keywords') || '').split(',').map(item => item.trim()).filter(Boolean),
     hashtags: [...html.matchAll(/#[\w-]+/g)].map(match => match[0]).filter((tag, index, tags) => tags.indexOf(tag) === index),
     categories: [],
-    extractionMethod: ['html', 'open-graph', 'twitter', 'json-ld', 'video-element'].filter(method => method === 'html' || (method === 'open-graph' && Boolean(meta(document, 'og:title'))) || (method === 'twitter' && Boolean(meta(document, 'twitter:title'))) || (method === 'json-ld' && Boolean(jsonLd.title)) || (method === 'video-element' && Boolean(video)))
+    extractionMethod: ['html', 'open-graph', 'twitter', 'json-ld', 'video-element'].filter(method => method === 'html' || (method === 'open-graph' && Boolean(meta(document, 'og:title'))) || (method === 'twitter' && Boolean(meta(document, 'twitter:title'))) || (method === 'json-ld' && Boolean(jsonLd.title)) || (method === 'video-element' && Boolean(video))),
+    metadata: { extractionMethod: ['html', 'open-graph', 'twitter', 'json-ld', 'video-element'], extractionSuccess: true }
   };
 }

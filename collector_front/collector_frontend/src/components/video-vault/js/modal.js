@@ -1,7 +1,10 @@
 import { escapeHtml, formatDate, formatDuration } from './utils.js';
 
+function thumbnailUrl(video) { return typeof video.thumbnail === 'object' ? video.thumbnail.url : video.thumbnail; }
+
 function playerSource(url) {
   const parsed = new URL(url);
+  if (parsed.hostname.endsWith('facebook.com') || parsed.hostname === 'fb.watch') return { type: 'unavailable' };
   if (parsed.hostname === 'youtu.be') return { type: 'iframe', src: `https://www.youtube.com/embed/${encodeURIComponent(parsed.pathname.slice(1))}?autoplay=1` };
   if (parsed.hostname.endsWith('youtube.com')) {
     const videoId = parsed.searchParams.get('v');
@@ -18,7 +21,9 @@ function playerSource(url) {
 export function showPlayer(video, root) {
   let source;
   try { source = playerSource(video.url); } catch { source = { type: 'iframe', src: 'about:blank' }; }
-  const player = source.type === 'video'
+  const player = source.type === 'unavailable'
+    ? '<div class="video-unavailable"><strong>Playback unavailable here</strong><span>Facebook does not allow this video to be embedded.</span></div>'
+    : source.type === 'video'
     ? `<video class="video-player" src="${escapeHtml(source.src)}" controls autoplay playsinline>Your browser cannot play this video.</video>`
     : `<iframe class="video-player" src="${escapeHtml(source.src)}" title="${escapeHtml(video.title)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
   root.innerHTML = `<div class="modal-backdrop player-backdrop"><section class="player-modal" role="dialog" aria-modal="true" aria-label="Playing ${escapeHtml(video.title)}"><button class="modal-close" data-modal-close aria-label="Close">×</button>${player}<div class="player-caption"><span class="modal-kicker">NOW PLAYING / ${escapeHtml(video.platform)}${video.video?.duration ? ` / ${formatDuration(video.video.duration)}` : ''}</span><h2>${escapeHtml(video.title)}</h2></div></section></div>`;
@@ -27,7 +32,7 @@ export function showPlayer(video, root) {
 }
 
 export function showDetails(video, root, handlers) {
-  root.innerHTML = `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-label="Video details"><button class="modal-close" data-modal-close aria-label="Close">×</button><img class="modal-image" src="${escapeHtml(video.thumbnail)}" alt=""><div class="modal-body"><span class="modal-kicker">${escapeHtml(video.platform)} / SAVED VIDEO</span><h2>${escapeHtml(video.title)}</h2><dl><div><dt>URL</dt><dd>${escapeHtml(video.url)}</dd></div><div><dt>Saved</dt><dd>${formatDate(video.savedAt)}</dd></div></dl><div class="modal-actions"><button class="secondary-button" data-modal-favorite>${video.favorite ? '♥ Favorited' : '♡ Favorite'}</button><button class="primary-button" data-modal-open>Play video</button></div><button class="delete-button" data-modal-delete>Delete video</button></div></section></div>`;
+  root.innerHTML = `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-label="Video details"><button class="modal-close" data-modal-close aria-label="Close">×</button><img class="modal-image" src="${escapeHtml(thumbnailUrl(video) || '')}" alt=""><div class="modal-body"><span class="modal-kicker">${escapeHtml(video.platform)} / SAVED VIDEO</span><h2>${escapeHtml(video.title)}</h2><dl><div><dt>URL</dt><dd>${escapeHtml(video.url)}</dd></div><div><dt>Saved</dt><dd>${formatDate(video.savedAt)}</dd></div></dl><div class="modal-actions"><button class="secondary-button" data-modal-favorite>${video.favorite ? '♥ Favorited' : '♡ Favorite'}</button><button class="primary-button" data-modal-open>Play video</button></div><button class="delete-button" data-modal-delete>Delete video</button></div></section></div>`;
   root.querySelector('[data-modal-close]').onclick = () => root.innerHTML = '';
   root.querySelector('.modal-backdrop').onclick = event => { if (event.target.classList.contains('modal-backdrop')) root.innerHTML = ''; };
   root.querySelector('[data-modal-open]').onclick = () => handlers.open(video);

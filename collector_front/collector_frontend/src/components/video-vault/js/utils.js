@@ -23,6 +23,7 @@ function durationFromText(value) {
 }
 export async function fetchVideoMetadata(url) {
   try {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.id) throw new Error('Browser preview cannot fetch cross-origin pages');
     return await extractMetadata(url);
     /* legacy fallback below is retained for older browser previews */
     /*

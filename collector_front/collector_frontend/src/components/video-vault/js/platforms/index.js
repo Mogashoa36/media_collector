@@ -9,6 +9,7 @@ const hosts = {
 export function adaptersFor(url) {
   let hostname = '';
   try { hostname = new URL(url).hostname.replace(/^www\./, ''); } catch { return []; }
-  return platforms.filter(platform => hosts[platform].some(host => hostname === host || hostname.endsWith(`.${host}`))).map(platform => new PageAdapter(platform, url));
+  const matched = platforms.filter(platform => hosts[platform].some(host => hostname === host || hostname.endsWith(`.${host}`)));
+  return (matched.length ? matched : ['Other']).map(platform => new PageAdapter(platform, url));
 }
 export { platforms };
