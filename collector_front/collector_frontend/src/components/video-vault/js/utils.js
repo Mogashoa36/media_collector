@@ -9,6 +9,7 @@ import { extractMetadata } from './metadata/metadataExtractor.js';
 export function formatDate(date) { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(date)); }
 export function escapeHtml(value = '') { return value.replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 export function makeId() { return `video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
+export function placeholderThumbnail() { return `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="100%" height="100%" fill="#1b1b1b"/><rect x="8" y="8" width="304" height="164" rx="8" fill="none" stroke="#343434"/><circle cx="160" cy="78" r="18" fill="none" stroke="#a3a3a3" stroke-width="3"/><polygon points="158,68 158,88 178,88 178,68" fill="#a3a3a3"/></svg>')}`; }
 export function thumbnailFor(url) { return `https://image.thum.io/get/width/900/crop/600/${encodeURIComponent(url)}`; }
 function durationFromText(value) {
   if (!value) return null;

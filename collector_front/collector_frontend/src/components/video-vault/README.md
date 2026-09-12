@@ -36,3 +36,13 @@ js/metadata/
 ```
 
 Load the unpacked extension, open a public video page, click **Save Current Video**, and review the extraction progress and result summary. The gallery displays the best discovered thumbnail, duration, and resolution when available.
+
+## Live-tab metadata (content script)
+
+Modern video platforms (YouTube, TikTok, Instagram, X, Twitch…) serve JavaScript app shells to plain HTTP requests, so the server-side `fetch` above often finds no meta tags, no JSON-LD, and no images. To fix that, the extension ships a content script (`js/metadata/tabExtractor.js`, registered under `content_scripts` in `manifest.json`) that reads the **live, fully-rendered DOM of the active tab** when you click **Save Current Video**: the real thumbnail, `<video>` poster/src/duration, and title. Live-tab results are merged with the server fetch (which still supplies canonical URLs and JSON-LD), with the live DOM winning for thumbnails, titles, and playback URLs.
+
+After changing the extension, reload it at `chrome://extensions` so the updated code and the new content script are applied to already-open tabs.
+
+### Why videos may not play inline
+
+Platforms like Instagram, Facebook, X/Twitter, and Reddit send `X-Frame-Options`/CSP headers that forbid embedding, and no extension can bypass that. VideoVault now adds an **Open in new tab ↗** action to every player so those videos still play outside the popup, plus official embeds for TikTok and Dailymotion, and direct `<video>` playback of `.mp4/.webm/.mov/.m3u8…` when the page exposes a media `contentUrl`.

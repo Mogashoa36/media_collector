@@ -3,5 +3,6 @@
     "editor.fontSize": 16,
     "files.autoSave": "onFocusChange",
     "editor.wordWrap": "on",
-    "editor.mouseWheelZoom": true
+    "editor.mouseWheelZoom": true,
+    "java.compile.nullAnalysis.mode": "automatic"
 }

@@ -5,6 +5,13 @@
   "description": "Save and organize videos while you browse.",
   "permissions": ["storage", "tabs", "activeTab"],
   "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["js/metadata/tabExtractor.js"],
+      "run_at": "document_end"
+    }
+  ],
   "action": { "default_title": "Open VideoVault", "default_popup": "popup.html" },
   "icons": { "16": "assets/icons/icon16.svg", "48": "assets/icons/icon48.svg", "128": "assets/icons/icon128.svg" }
 }

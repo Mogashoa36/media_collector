@@ -1,29 +1,63 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VideoVault</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="popup.css" />
-  </head>
-  <body>
-    <main class="app-shell">
-      <header class="topbar">
-        <a class="brand" href="#all" aria-label="VideoVault home"><span class="brand-mark" aria-hidden="true"><span></span></span><span>Video<span>Vault</span></span></a>
-        <div class="header-actions"><button class="icon-button" id="theme-toggle" title="Toggle theme" aria-label="Toggle theme">☼</button><button class="icon-button" id="settings-button" title="Settings" aria-label="Settings">⚙</button></div>
-      </header>
-      <section class="search-row" aria-label="Search saved videos"><span class="search-icon" aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="Search saved videos..." autocomplete="off" /><kbd>/</kbd></section>
-      <section class="source-bookmarks" aria-label="Video sources"><div class="source-heading"><span class="eyebrow">SOURCES</span><button id="clear-source" class="clear-source" type="button" hidden>Clear</button></div><div id="source-list" class="source-list"></div></section>
-      <section id="bulk-actions" class="bulk-actions" hidden aria-label="Bulk video actions"><strong><span id="selected-count">0</span> selected</strong><button id="bulk-move" type="button">Move to folder</button><button id="bulk-favorite" type="button">Favorite</button><button id="bulk-share" type="button">Share</button><button id="bulk-delete" class="bulk-danger" type="button">Delete</button><button id="clear-selection" class="clear-source" type="button">Cancel</button></section>
-      <nav class="view-nav" aria-label="Video views"><button class="nav-item active" data-view="all">Gallery <b id="video-count">0</b></button><button class="nav-item" data-view="browse">Browse</button><button class="nav-item" data-view="favorites">Favorites <b id="favorite-count">0</b></button><button class="nav-item" data-view="collections">Collections</button><button class="nav-item" data-view="settings">Settings</button></nav>
-      <section class="toolbar"><div><span class="eyebrow" id="view-label">YOUR LIBRARY</span><span class="result-count" id="result-count"></span></div><div class="toolbar-actions"><button id="select-mode" class="select-mode" type="button">Select</button><select id="sort-select" aria-label="Sort videos"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="az">A-Z</option><option value="favorites">Favorites first</option></select></div></section>
-      <section id="gallery" class="gallery" aria-live="polite"></section>
-      <button id="save-button" class="save-button"><span>＋</span> Save Current Video</button>
-    </main>
-    <div id="toast" class="toast" role="status"></div><div id="api-status" class="api-status" role="status"></div><div id="modal-root"></div>
-    <script type="module" src="popup.js"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Video Vault</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#all" aria-label="VideoVault home"><span class="brand-mark"
+          aria-hidden="true"><span></span></span><span>Video<span>Vault</span></span></a>
+      <div class="header-actions"><button class="icon-button" id="theme-toggle" title="Toggle theme"
+          aria-label="Toggle theme">☼</button><button class="icon-button" id="settings-button" title="Settings"
+          aria-label="Settings">⚙</button></div>
+    </header>
+    <section class="search-row" aria-label="Search saved videos"><span class="search-icon"
+        aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="Search saved videos..."
+        autocomplete="off" /><kbd>/</kbd></section>
+    <section class="source-bookmarks" aria-label="Video sources">
+      <div class="source-heading"><span class="eyebrow">SOURCES</span><button id="clear-source" class="clear-source"
+          type="button" hidden>Clear</button></div>
+      <div id="source-list" class="source-list"></div>
+    </section>
+    <section id="bulk-actions" class="bulk-actions" hidden aria-label="Bulk video actions"><strong><span
+          id="selected-count">0</span> selected</strong><button id="bulk-move" type="button">Move to
+        folder</button><button id="bulk-favorite" type="button">Favorite</button><button id="bulk-share"
+        type="button">Share</button><button id="bulk-delete" class="bulk-danger" type="button">Delete</button><button
+        id="clear-selection" class="clear-source" type="button">Cancel</button></section>
+    <nav class="view-nav" aria-label="Video views"><button class="nav-item active" data-view="all">Gallery <b
+          id="video-count">0</b></button><button class="nav-item" data-view="browse">Browse</button><button
+        class="nav-item" data-view="favorites">Favorites <b id="favorite-count">0</b></button><button class="nav-item"
+        data-view="collections">Collections</button><button class="nav-item" data-view="settings">Settings</button>
+    </nav>
+    <section class="toolbar">
+      <div><span class="eyebrow" id="view-label">YOUR LIBRARY</span><span class="result-count" id="result-count"></span>
+      </div>
+      <div class="toolbar-actions"><button id="select-mode" class="select-mode" type="button">Select</button><select
+          id="sort-select" aria-label="Sort videos">
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="az">A-Z</option>
+          <option value="favorites">Favorites first</option>
+        </select></div>
+    </section>
+    <section id="gallery" class="gallery" aria-live="polite"></section>
+    <button id="save-button" class="save-button"><span>＋</span> Save Current Video</button>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+  <div id="api-status" class="api-status" role="status"></div>
+  <div id="modal-root"></div>
+  <script type="module" src="popup.js"></script>
+</body>
+
 </html>
