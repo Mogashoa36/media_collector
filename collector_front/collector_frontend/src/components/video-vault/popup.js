@@ -4,27 +4,84 @@ import { filterVideos } from './js/search.js';
 import { renderGallery } from './js/gallery.js';
 import { showDetails, showPlayer, confirmDelete } from './js/modal.js';
 import { adaptersFor, platforms } from './js/platforms/index.js';
-import { recommend } from './js/personalization/recommendationEngine.js';
-import { clearPersonalization, getPreferences, setPreferences } from './js/personalization/preferences.js';
-import { track } from './js/personalization/tracking.js';
-import { download, getDownloadOptions, fetchSaveFromMetadata, saveFromPageUrl } from './js/downloads/downloadManager.js';
+import { buildSections } from './js/personalization/recommendationEngine.js';
+import { dismissRecommendation, getFeedback } from './js/personalization/feedback.js';
+import { clearPersonalization, getPreferences, setPreferences, resetPersonalization } from './js/personalization/preferences.js';
+import { track, recordSelection, events, readCountsAsync as readSelCounts } from './js/personalization/tracking.js';
+import { download, getDownloadOptions, fetchSaveFromMetadata, saveFromPageUrl, openOriginal } from './js/downloads/downloadManager.js';
+import { showAuthRequired, privateContentHtml, unavailableHtml } from './js/downloads/authUi.js';
+import { createNativeYtDlpBridge, setYtDlpBridge } from './js/downloads/downloadManager.js';
 
 const state = { videos: [], view: 'all', query: '', sort: 'newest', collection: '', source: '', selectionMode: false };
 const selectedVideos = new Set();
-const selectionCountsKey = 'videovault-selection-counts';
 const $ = selector => document.querySelector(selector);
 const gallery = $('#gallery');
 function toast(message) { const element = $('#toast'); element.textContent = `✓  ${message}`; element.classList.add('show'); setTimeout(() => element.classList.remove('show'), 2600); }
 function openVideo(video) { track('opened', video); showPlayer(video, $('#modal-root'), { download: doDownload }); }
 async function doDownload(video) {
   const result = await download(video);
-  if (result.status === 'downloaded') toast('Download started');
+  if (result.status === 'downloaded') toast(`Download started (${result.provider || 'direct'})`);
+  else if (result.status === 'already-downloading') toast('This download is already in progress');
   else if (result.status === 'savefrom') toast('SaveFrom opened — pick a format to download');
-  else toast('No download available for this video');
+  else if (result.status === 'ytdlp') showDownloadPicker(video, result.options || []);
+  else if (result.status === 'auth-required') showDownloadAuth(video, result);
+  else if (result.status === 'private') showDownloadPrivate(video, result);
+  else showDownloadUnavailable(video, result);
+}
+function downloadDialogShell(title, body) {
+  const root = document.querySelector('#modal-root');
+  root.innerHTML = `<div class="modal-backdrop"><section class="modal download-modal" role="dialog" aria-modal="true"><button class="modal-close" data-modal-close aria-label="Close">×</button><div class="modal-body"><span class="modal-kicker">${title}</span><div data-download-body>${body}</div></div></section></div>`;
+  root.querySelector('[data-modal-close]').onclick = () => root.innerHTML = '';
+  root.querySelector('.modal-backdrop').onclick = event => { if (event.target.classList.contains('modal-backdrop')) root.innerHTML = ''; };
+  return root.querySelector('[data-download-body]');
+}
+async function showDownloadPicker(video, options) {
+  const rows = options.map((option, index) => `<label><input type="radio" name="dl" value="${index}" ${index === 0 ? 'checked' : ''}>${option.quality || option.format || 'media'} — ${option.fileType || option.format || ''} (${option.provider})</label>`).join('');
+  const body = downloadDialogShell(`DOWNLOAD / ${(video.platform || '').toUpperCase()}`, `<h2>${(video.title || 'Choose a format')}</h2><div class="download-options">${rows || '<p>No formats found.</p>'}</div><p class="download-state" data-download-state>Detecting media…</p><div class="modal-actions"><button class="secondary-button" data-download-original>Open Original</button><button class="primary-button" data-download-start>Download</button></div>`);
+  body.querySelector('[data-download-original]').onclick = () => openOriginal(video);
+  body.querySelector('[data-download-start]').onclick = async () => {
+    const picked = options[Number(body.querySelector('input[name="dl"]:checked')?.value || 0)] || options[0];
+    if (!picked) return;
+    const state = body.querySelector('[data-download-state]');
+    if (picked.url && /^https?:/i.test(picked.url)) {
+      state.textContent = 'Preparing download…';
+      const link = document.createElement('a'); link.href = picked.url; link.download = ''; link.rel = 'noopener'; link.click();
+      state.textContent = 'Download complete — check your downloads folder.';
+      toast('Download started');
+    } else {
+      state.textContent = 'Preparing download… install the optional local yt-dlp helper to fetch this format (see docs/YTDlpSetup.md).';
+    }
+  };
+}
+function showDownloadAuth(video, result) {
+  const pageUrl = result.pageUrl || video.url || video.canonicalUrl || '';
+  const body = downloadDialogShell('DOWNLOAD / LOGIN', `<h2>${(video.title || 'Download')}</h2><div data-auth-slot></div><div class="modal-actions"><button class="secondary-button" data-download-original>Open Original</button></div>`);
+  body.querySelector('[data-download-original]').onclick = () => openOriginal(video);
+  showAuthRequired(body.querySelector('[data-auth-slot]'), { platform: video.platform, pageUrl, detail: result.error?.detail || '', onRetry: async () => { const retry = await download(video); if (retry.status === 'downloaded') { toast('Download started'); document.querySelector('#modal-root').innerHTML = ''; } else if (retry.status === 'auth-required') { showDownloadAuth(video, retry); } else if (retry.status === 'already-downloading') { toast('This download is already in progress'); } else { toast(retry.error?.message || 'Still unavailable — try Open Site & Login'); } } });
+}
+function showDownloadPrivate(video, result) {
+  const body = downloadDialogShell('DOWNLOAD / RESTRICTED', `<h2>${(video.title || 'Download')}</h2>${privateContentHtml({ platform: video.platform })}<div class="modal-actions"><button class="secondary-button" data-download-original>Open Original</button></div>`);
+  body.querySelector('[data-download-original]').onclick = () => openOriginal(video);
+}
+function showDownloadUnavailable(video, result) {
+  const message = result?.error?.message || '';
+  const body = downloadDialogShell('DOWNLOAD', `<h2>${(video.title || 'Download')}</h2>${unavailableHtml({ message })}<div class="modal-actions"><button class="secondary-button" data-download-original>Open Original</button></div>`);
+  body.querySelector('[data-download-original]').onclick = () => openOriginal(video);
 }
 async function remove(video) { await storage.deleteVideo(video.id); await refresh(); toast('Video deleted'); }
 function closeModal() { $('#modal-root').innerHTML = ''; }
-function updateSelection(video, selected, card) { if (selected) { selectedVideos.add(video.id); const counts = JSON.parse(localStorage.getItem(selectionCountsKey) || '{}'); counts[video.id] = (counts[video.id] || 0) + 1; localStorage.setItem(selectionCountsKey, JSON.stringify(counts)); if (counts[video.id] >= 3 && !video.favorite) storage.updateVideo(video.id, { favorite: true }).then(() => toast('Frequently selected video added to Favorites')); } else selectedVideos.delete(video.id); card.classList.toggle('is-selected', selected); $('#selected-count').textContent = selectedVideos.size; $('#bulk-actions').hidden = selectedVideos.size === 0; }
+function updateSelection(video, selected, card) { selectedVideos[selected ? 'add' : 'delete'](video.id); card.classList.toggle('is-selected', selected); $('#selected-count').textContent = selectedVideos.size; $('#bulk-actions').hidden = selectedVideos.size === 0; }
+// Frequent-selection signal: the count itself is written by recordSelection
+// (single writer, no race with updateSelection). Every 3rd selection nudges
+// the video into Favorites as implicit positive feedback.
+function maybeAutoFavorite(video, selected) {
+  if (!selected) return;
+  readSelCounts().then((counts) => {
+    if ((Number(counts[video.id]) || 0) >= 3 && !video.favorite) {
+      storage.updateVideo(video.id, { favorite: true }).then(() => toast('Frequently selected video added to Favorites')).catch(() => { });
+    }
+  }).catch(() => { });
+}
 function clearSelection() { selectedVideos.clear(); $('#bulk-actions').hidden = true; document.querySelectorAll('.card-select input').forEach(input => { input.checked = false; }); document.querySelectorAll('.video-card').forEach(card => card.classList.remove('is-selected')); }
 function authenticated(hostname) { return Boolean(localStorage.getItem(`videovault-authenticated:${hostname}`)); }
 function toggleSelectionMode() { state.selectionMode = !state.selectionMode; document.body.classList.toggle('selection-mode', state.selectionMode); $('#select-mode').classList.toggle('active', state.selectionMode); $('#select-mode').textContent = state.selectionMode ? 'Done' : 'Select'; if (!state.selectionMode) clearSelection(); }
@@ -68,6 +125,7 @@ async function saveVideoFromLink(url, title, tabMetadata = null) {
   }
   $('#save-progress').textContent = 'Saving video...';
   const saved = await storage.saveVideo(candidate);
+  track('saved', saved);
   await refresh();
   closeModal();
   const size = saved.thumbnail.width && saved.thumbnail.height ? `${saved.thumbnail.width} × ${saved.thumbnail.height}` : 'unavailable';
@@ -108,12 +166,97 @@ function render() {
   if (state.view === 'browse') return renderBrowse();
   if (state.view === 'settings') return renderSettings();
   if (state.view === 'collections') return renderCollections();
-  renderGallery(gallery, visible, { hasSearch: Boolean(state.query), open: openVideo, select: updateSelection, save: saveCurrentVideo, canDownload: video => getDownloadOptions(video).supported, download: doDownload, favorite: async video => { await storage.toggleFavorite(video.id); await refresh(); toast(video.favorite ? 'Removed from favorites' : 'Added to favorites'); }, details: video => showDetails(video, $('#modal-root'), { open: openVideo, favorite: async item => { await storage.toggleFavorite(item.id); await refresh(); }, confirmDelete: item => confirmDelete(item, $('#modal-root'), () => remove(item)) }) });
+  renderGallery(gallery, visible, { hasSearch: Boolean(state.query), open: openVideo, select: (video, checked, card) => { recordSelection(video); maybeAutoFavorite(video, checked); updateSelection(video, checked, card); }, save: saveCurrentVideo, canDownload: video => getDownloadOptions(video).supported, download: doDownload, favorite: async video => { if (!video.favorite) track('favorite', video); await storage.toggleFavorite(video.id); await refresh(); toast(video.favorite ? 'Removed from favorites' : 'Added to favorites'); }, details: video => openDetails(video), favorite: async item => { await storage.toggleFavorite(item.id); await refresh(); }, confirmDelete: item => confirmDelete(item, $('#modal-root'), () => remove(item)) }) });
 }
-function browseCard(video) { const thumbnail = typeof video.thumbnail === 'object' ? video.thumbnail : { url: video.thumbnail }; const duration = video.video?.duration; const downloadAvailable = getDownloadOptions(video).supported; return `<article class="browse-card"><img loading="lazy" src="${thumbnail.url || ''}" alt=""><div><h3>${video.title || 'Untitled video'}</h3><p>${video.platform || 'Unknown'}${duration ? ` • ${formatDuration(duration)}` : ''}</p><button data-browse-save>+ Save</button>${downloadAvailable ? '<button data-browse-download>Download</button>' : ''}</div></article>`; }
-async function renderBrowse() { const active = state.browsePlatform || ''; const videos = recommend(state.videos.filter(video => !active || video.platform === active), 12); gallery.innerHTML = `<section class="browse-dashboard"><div class="browse-title"><div><span class="eyebrow">DISCOVER</span><h2>Browse</h2></div><button id="browse-refresh" class="select-mode" type="button">↻ Refresh</button></div><p class="browse-note">Choose a source or discover the public page in your active tab.</p><div class="platform-picker">${[...platforms.filter(platform => platform !== 'Facebook'), 'Other websites'].map(platform => `<button class="platform-option ${active === platform ? 'selected' : ''}" data-platform="${platform}">${platform}</button>`).join('')}</div><button id="discover-active" class="primary-button" type="button">Discover active tab</button><h3>For You</h3><div class="browse-grid">${videos.map(browseCard).join('') || '<p class="browse-empty">Choose a platform or save videos to build your feed.</p>'}</div><h3>Trending</h3><p class="browse-empty">Trending is unavailable without an official platform feed.</p></section>`; gallery.querySelectorAll('[data-platform]').forEach(button => button.onclick = () => { state.browsePlatform = button.dataset.platform === 'Other websites' ? 'Other' : button.dataset.platform; renderBrowse(); }); $('#browse-refresh').onclick = () => renderBrowse(); $('#discover-active').onclick = discoverActiveTab; gallery.querySelectorAll('[data-browse-save]').forEach((button, index) => button.onclick = async () => { const duplicate = await storage.findDuplicate(videos[index]); if (duplicate) return toast('Already in Gallery'); await storage.saveVideo(videos[index]); track('saved', videos[index]); toast('Saved to Gallery'); }); gallery.querySelectorAll('[data-browse-download]').forEach((button, index) => button.onclick = () => doDownload(videos[index])); }
-async function discoverActiveTab() { if (typeof chrome === 'undefined' || !chrome.tabs?.query) return toast('Open a public website in Chrome first'); const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); const adapter = adaptersFor(tab?.url || '')[0]; if (!adapter) return toast('No public page found'); const result = await adapter.getFeed(); if (!result.supported) return toast(result.reason || 'Feed unavailable'); state.videos = [...result.videos, ...state.videos]; state.browsePlatform = result.videos[0].platform; renderBrowse(); toast('Active page discovered'); }
-function renderSettings() { const preferences = getPreferences(); gallery.innerHTML = `<section class="settings-panel"><span class="eyebrow">PREFERENCES</span><h2>Personalization</h2>${[['enabled', 'Personalize recommendations'], ['trackSaved', 'Track saved videos'], ['trackFavorites', 'Track favorites'], ['trackViewing', 'Track viewing interactions'], ['cloud', 'Use cloud personalization']].map(([key, label]) => `<label><input type="checkbox" data-pref="${key}" ${preferences[key] ? 'checked' : ''}>${label}</label>`).join('')}<button id="clear-personalization" class="danger-button" type="button">Clear Personalization Data</button></section>`; gallery.querySelectorAll('[data-pref]').forEach(input => input.onchange = () => setPreferences({ [input.dataset.pref]: input.checked })); $('#clear-personalization').onclick = () => { if (window.confirm('Reset your recommendations?')) { clearPersonalization(); toast('Personalization data cleared'); } }; }
+async function openDetails(video) {
+  const prefs = getPreferences();
+  const feedback = await getFeedback().catch(() => ({ dismissed: {}, liked: {} }));
+  const counts = await readSelCounts().catch(() => ({}));
+  const built = buildSections({ videos: state.videos, events: events(), selectionCounts: counts, feedback,
+    preferences: { recommendationsEnabled: true, personalizationEnabled: prefs.enabled !== false, trendingEnabled: true },
+    seedVideo: video, limits: { similar: 3 } });
+  const sec = built.sections;
+  // Display-level dedupe across the modal's recommendation groups.
+  const seen = new Set();
+  const dedupe = (list) => list.filter((i) => { const v = i.video || {}; const k = v.canonicalUrl || v.url || v.id; if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  const recGroups = [
+    { title: 'SIMILAR VIDEOS', items: dedupe(sec.similar.items) },
+    { title: 'FROM YOUR FAVORITES', items: dedupe(sec.fromFavorites.items) },
+    { title: 'SIMILAR TO YOUR COLLECTIONS', items: dedupe(sec.fromCollections.items) }
+  ].filter((g) => g.items.length);
+  showDetails(video, $('#modal-root'), { open: openVideo, download: doDownload,
+    dismiss: async (item) => { await dismissRecommendation(item.id || item.url, 'not-interested'); toast('Got it — fewer picks like this'); },
+    similar: sec.similar.items,
+    recGroups,
+    openSimilar: (id) => { const target = state.videos.find(item => item.id === id); if (target) openDetails(target); },
+    favorite: async item => { if (!item.favorite) track('favorite', item); await storage.toggleFavorite(item.id); await refresh(); }, confirmDelete: item => confirmDelete(item, $('#modal-root'), () => remove(item)) });
+}
+function browseCard(video) { const thumbnail = typeof video.thumbnail === 'object' ? video.thumbnail : { url: video.thumbnail }; const duration = video.video?.duration; const downloadAvailable = getDownloadOptions(video).supported; return `<article class="browse-card"><img loading="lazy" src="${thumbnail.url || ''}" alt=""><div><h3>${video.title || 'Untitled video'}</h3><p>${video.platform || 'Unknown'}${duration ? ` • ${formatDuration(duration)}` : ''}</p><button data-browse-save>+ Save</button><button data-browse-dismiss title="Not interested">✕</button>${downloadAvailable ? '<button data-browse-download>Download</button>' : ''}</div></article>`; }
+let browseCache = { key: '', built: null };
+async function browseSections(videos) {
+  const prefs = getPreferences();
+  const feedback = await getFeedback().catch(() => ({ dismissed: {}, liked: {} }));
+  const counts = await readSelCounts().catch(() => ({}));
+  const built = buildSections({ videos, events: events(), selectionCounts: counts, feedback,
+    preferences: { recommendationsEnabled: prefs.recommendationsEnabled !== false, personalizationEnabled: prefs.enabled !== false, trendingEnabled: prefs.trendingEnabled !== false, platforms: prefs.platforms || {} } });
+  const sec = built.sections;
+  const items = (key) => sec[key].items.map(i => i.video);
+  // Display-level dedupe across recommendation sections (Recently Visited is
+  // history, not a recommendation, so it may overlap). Precedence follows the
+  // page order of recommendation slots.
+  const seen = new Set();
+  const dedupe = (list) => list.filter((v) => { const k = v.canonicalUrl || v.url || v.id; if (!k || seen.has(k)) return false; seen.add(k); return true; });
+  const forYou = dedupe(items('forYou'));
+  const recommended = dedupe(items('recommended'));
+  const similar = dedupe(items('similar'));
+  const fromFavorites = dedupe(items('fromFavorites'));
+  const fromCollections = dedupe(items('fromCollections'));
+  return { built, recent: items('recentlyVisited'), forYou, recommended, similar, fromFavorites, fromCollections,
+    trendingState: sec.trending.state, platformFeed: built.platformFeed };
+}
+// Guards against overlapping Browse renders (rapid Refresh / platform picks):
+// each render gets a token; a slower older render discards itself instead of
+// clobbering the newer one.
+let browseRenderToken = 0;
+async function renderBrowseInner() {
+  const token = ++browseRenderToken;
+  const active = state.browsePlatform || ''; const pool = state.videos.filter(video => !active || video.platform === active); const sections = await browseSections(pool);
+  if (token !== browseRenderToken) return;
+  const videos = sections.forYou; gallery.innerHTML = `<section class="browse-dashboard"><div class="browse-title"><div><span class="eyebrow">DISCOVER</span><h2>Browse</h2></div><button id="browse-refresh" class="select-mode" type="button">↻ Refresh</button></div><p class="browse-note">Choose a source or discover the public page in your active tab.</p><div class="platform-picker">${[...platforms.filter(platform => platform !== 'Facebook'), 'Other websites'].map(platform => `<button class="platform-option ${active === platform ? 'selected' : ''}" data-platform="${platform}">${platform}</button>`).join('')}</div><button id="discover-active" class="primary-button" type="button">Discover active tab</button><div data-browse-auth></div><h3>Recently Visited</h3><div class="browse-grid">${sections.recent.map(browseCard).join('') || '<p class="browse-empty">Nothing visited yet.</p>'}</div><h3>For You</h3><div class="browse-grid">${videos.map(browseCard).join('') || '<p class="browse-empty">No recommendations yet — save some videos to build your feed.</p>'}</div><h3>Recommended</h3><div class="browse-grid">${sections.recommended.map(browseCard).join('') || '<p class="browse-empty">No recommendations yet.</p>'}</div><h3>Similar Videos</h3><div class="browse-grid">${sections.similar.map(browseCard).join('') || '<p class="browse-empty">Open a saved video to see similar picks.</p>'}</div><h3>From Your Favorites</h3><div class="browse-grid">${sections.fromFavorites.map(browseCard).join('') || '<p class="browse-empty">Favorite some videos to power this section.</p>'}</div><h3>Similar to Your Collections</h3><div class="browse-grid">${sections.fromCollections.map(browseCard).join('') || '<p class="browse-empty">Add videos to a collection to see related picks.</p>'}</div><h3>Trending</h3>${sections.trendingState === 'disabled' ? '<p class="browse-empty">Trending is turned off in Settings.</p>' : sections.trendingState === 'auth-required' ? '<div data-trending-auth></div>' : '<p class="browse-empty">Trending is unavailable without an official platform feed.</p>'}</section>`; gallery.querySelectorAll('[data-platform]').forEach(button => button.onclick = () => { state.browsePlatform = button.dataset.platform === 'Other websites' ? 'Other' : button.dataset.platform; renderBrowse(); }); $('#browse-refresh').onclick = () => renderBrowse();
+  const trendingSlot = gallery.querySelector('[data-trending-auth]');
+  if (trendingSlot) showAuthRequired(trendingSlot, { platform: active || 'platform', pageUrl: '', onRetry: async () => renderBrowse() }); $('#discover-active').onclick = discoverActiveTab; gallery.querySelectorAll('[data-browse-save]').forEach((button, index) => button.onclick = async () => { const duplicate = await storage.findDuplicate(videos[index]); if (duplicate) return toast('Already in Gallery'); await storage.saveVideo(videos[index]); track('saved', videos[index]); toast('Saved to Gallery'); }); gallery.querySelectorAll('[data-browse-download]').forEach((button, index) => button.onclick = () => doDownload(videos[index])); gallery.querySelectorAll('[data-browse-dismiss]').forEach((button, index) => button.onclick = async (event) => { event.stopPropagation(); await dismissRecommendation(videos[index]?.id || videos[index]?.url, 'not-interested'); toast('Recommendation dismissed'); renderBrowse(); }); }
+async function renderBrowse() {
+  gallery.innerHTML = '<section class="browse-dashboard"><p class="browse-empty">Loading recommendations…</p></section>';
+  try {
+    await renderBrowseInner();
+  } catch {
+    gallery.innerHTML = `<section class="browse-dashboard"><div class="auth-required"><strong>Recommendations unavailable</strong><span>Something went wrong while building your feed. Your saved videos are unaffected.</span><div class="auth-actions"><button type="button" class="primary-button" id="rec-retry">Retry</button></div></div></section>`;
+    $('#rec-retry').onclick = () => renderBrowse();
+  }
+}
+async function discoverActiveTab() {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.query) return toast('Open a public website in Chrome first');
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const adapter = adaptersFor(tab?.url || '')[0];
+  if (!adapter) return toast('No public page found');
+  const result = await adapter.getFeed();
+  if (!result.supported) {
+    if (result?.error?.code === 'AUTH_REQUIRED') {
+      await renderBrowse();
+      const slot = document.querySelector('[data-browse-auth]');
+      if (slot) showAuthRequired(slot, { platform: adapter.platform, pageUrl: tab.url, onRetry: async () => discoverActiveTab() });
+      return;
+    }
+    return toast(result.reason || 'Feed unavailable');
+  }
+  const normalized = result.videos.map(video => ({ ...video, platform: video.platform || adapter.platform, canonicalUrl: video.canonicalUrl || video.url || tab.url, pageUrl: video.pageUrl || tab.url, creator: video.creator || { name: '', username: '', profileUrl: '' } }));
+  if (!normalized.length) return toast('Nothing discovered on this page');
+  state.videos = [...normalized, ...state.videos];
+  state.browsePlatform = normalized[0].platform;
+  renderBrowse();
+  toast('Active page discovered');
+}
+function renderSettings() { const preferences = getPreferences(); gallery.innerHTML = `<section class="settings-panel"><span class="eyebrow">PREFERENCES</span><h2>Personalization</h2>${[['enabled', 'Personalize recommendations'], ['recommendationsEnabled', 'Enable recommendations'], ['trendingEnabled', 'Enable trending content'], ['trackSaved', 'Track saved videos'], ['trackFavorites', 'Track favorites'], ['trackViewing', 'Track viewing interactions']].map(([key, label]) => `<label><input type="checkbox" data-pref="${key}" ${preferences[key] !== false ? 'checked' : ''}>${label}</label>`).join('')}<h3>Platform preferences</h3>${platforms.map(platform => `<label><input type="checkbox" data-platform-pref="${platform}" ${(preferences.platforms || {})[platform] !== false ? 'checked' : ''}>${platform}</label>`).join('')}<button id="clear-personalization" class="danger-button" type="button">Clear Recommendation History</button><button id="reset-personalization" class="danger-button" type="button">Reset Personalization</button></section>`; gallery.querySelectorAll('[data-pref]').forEach(input => input.onchange = () => setPreferences({ [input.dataset.pref]: input.checked })); gallery.querySelectorAll('[data-platform-pref]').forEach(input => input.onchange = () => setPreferences({ platforms: { ...(getPreferences().platforms || {}), [input.dataset.platformPref]: input.checked } })); $('#clear-personalization').onclick = () => { if (window.confirm('Clear recommendation history?')) { clearPersonalization(); toast('Recommendation history cleared'); } }; $('#reset-personalization').onclick = async () => { if (window.confirm('Reset all personalization?')) { await resetPersonalization(); renderSettings(); toast('Personalization reset'); } }; }
 function renderSources() {
   const counts = new Map();
   state.videos.forEach(video => { const source = sourceFor(video.url); counts.set(source, (counts.get(source) || 0) + 1); });
@@ -171,4 +314,5 @@ $('#select-mode').onclick = toggleSelectionMode; $('#clear-selection').onclick =
 $('#theme-toggle').onclick = () => { document.body.classList.toggle('light-theme'); localStorage.setItem('videovault-theme', document.body.classList.contains('light-theme') ? 'light' : 'dark'); };
 if (localStorage.getItem('videovault-theme') === 'light') document.body.classList.add('light-theme');
 document.addEventListener('keydown', event => { if (event.key === '/' && document.activeElement.tagName !== 'INPUT') { event.preventDefault(); $('#search-input').focus(); } if (event.key === 'Escape') $('#modal-root').innerHTML = ''; });
+try { if (typeof chrome !== 'undefined' && chrome.runtime?.sendNativeMessage && !window['videovault-ytdlp-autowire']) { window['videovault-ytdlp-autowire'] = true; setYtDlpBridge(createNativeYtDlpBridge()); } } catch { /* yt-dlp stays disabled */ }
 refresh();

@@ -1257,3 +1257,21 @@ body.selection-mode .card-select {
     background: #62d391;
     box-shadow: inset 0 0 0 3px #111;
 }
+/* Download + auth states (matches existing dark panel style) */
+.download-modal h2 { margin: 6px 0 12px; font: 600 17px 'Space Grotesk', sans-serif; }
+.download-options { display: grid; gap: 8px; margin: 10px 0; }
+.download-options label { display: flex; gap: 8px; align-items: center; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; cursor: pointer; }
+.download-state { color: var(--muted); font-size: 12px; min-height: 18px; }
+.auth-required, .download-unavailable { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.auth-required strong, .download-unavailable strong { font-size: 13px; }
+.auth-required span, .download-unavailable span { color: var(--muted); font-size: 12px; }
+.auth-actions { display: flex; gap: 8px; margin-top: 4px; }
+.auth-detail { color: var(--muted); font-size: 11px; word-break: break-word; }
+.download-row { margin-bottom: 10px; }
+
+/* Recommendations */
+.rec-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.rec-chip { padding: 6px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); color: var(--ink); font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-chip:hover { border-color: #62d391; }
+.rec-row { margin-bottom: 8px; }
+.rec-why { color: var(--muted); font-size: 11px; }

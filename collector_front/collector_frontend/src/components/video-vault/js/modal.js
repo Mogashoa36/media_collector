@@ -63,10 +63,17 @@ export function showPlayer(video, root, handlers = {}) {
 }
 
 export function showDetails(video, root, handlers) {
-  root.innerHTML = `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-label="Video details"><button class="modal-close" data-modal-close aria-label="Close">×</button><img class="modal-image" src="${escapeHtml(thumbnailUrl(video) || placeholderThumbnail())}" alt=""><div class="modal-body"><span class="modal-kicker">${escapeHtml(video.platform)} / SAVED VIDEO</span><h2>${escapeHtml(video.title)}</h2><dl><div><dt>URL</dt><dd>${escapeHtml(video.url)}</dd></div><div><dt>Saved</dt><dd>${formatDate(video.savedAt)}</dd></div></dl><div class="modal-actions"><button class="secondary-button" data-modal-favorite>${video.favorite ? '♥ Favorited' : '♡ Favorite'}</button><button class="primary-button" data-modal-open>Play video</button></div><button class="delete-button" data-modal-delete>Delete video</button></div></section></div>`;
+  root.innerHTML = `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-label="Video details"><button class="modal-close" data-modal-close aria-label="Close">×</button><img class="modal-image" src="${escapeHtml(thumbnailUrl(video) || placeholderThumbnail())}" alt=""><div class="modal-body"><span class="modal-kicker">${escapeHtml(video.platform)} / SAVED VIDEO</span><h2>${escapeHtml(video.title)}</h2><dl><div><dt>URL</dt><dd>${escapeHtml(video.url)}</dd></div><div><dt>Saved</dt><dd>${formatDate(video.savedAt)}</dd></div></dl><div class="rec-row" data-rec-slot></div><div class="modal-actions"><button class="secondary-button" data-modal-download>Download</button><button class="secondary-button" data-modal-feedback>Not interested</button><button class="secondary-button" data-modal-favorite>${video.favorite ? '♥ Favorited' : '♡ Favorite'}</button><button class="primary-button" data-modal-open>Play video</button></div><button class="delete-button" data-modal-delete>Delete video</button></div></section></div>`;
   root.querySelector('[data-modal-close]').onclick = () => root.innerHTML = '';
   root.querySelector('.modal-backdrop').onclick = event => { if (event.target.classList.contains('modal-backdrop')) root.innerHTML = ''; };
   root.querySelector('[data-modal-open]').onclick = () => handlers.open(video);
+  if (root.querySelector('[data-modal-download]')) root.querySelector('[data-modal-download]').onclick = () => handlers.download ? handlers.download(video) : handlers.open(video);
+  if (root.querySelector('[data-modal-feedback]')) root.querySelector('[data-modal-feedback]').onclick = async () => { await handlers.dismiss?.(video); root.innerHTML = ''; };
+  const recGroups = handlers.recGroups?.length ? handlers.recGroups : (handlers.similar?.length ? [{ title: 'SIMILAR VIDEOS', items: handlers.similar }] : []);
+  if (recGroups.length && root.querySelector('[data-rec-slot]')) {
+    root.querySelector('[data-rec-slot]').innerHTML = recGroups.filter(group => group.items?.length).map(group => `<span class="modal-kicker">${escapeHtml(group.title)}</span><div class="rec-strip">${group.items.slice(0, 3).map(item => `<button class="rec-chip" data-rec="${escapeHtml(item.video?.id || '')}" title="${escapeHtml((item.reasons || []).map(r => r.label).join(', '))}">${escapeHtml((item.video?.title || 'Video').slice(0, 42))}</button>`).join('')}</div>`).join('');
+    root.querySelectorAll('[data-rec]').forEach(button => button.onclick = () => handlers.openSimilar?.(button.dataset.rec));
+  }
   root.querySelector('[data-modal-favorite]').onclick = () => { handlers.favorite(video); root.innerHTML = ''; };
   root.querySelector('[data-modal-delete]').onclick = () => handlers.confirmDelete(video);
 }
