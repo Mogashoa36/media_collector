@@ -46,3 +46,13 @@ After changing the extension, reload it at `chrome://extensions` so the updated 
 ### Why videos may not play inline
 
 Platforms like Instagram, Facebook, X/Twitter, and Reddit send `X-Frame-Options`/CSP headers that forbid embedding, and no extension can bypass that. VideoVault now adds an **Open in new tab ↗** action to every player so those videos still play outside the popup, plus official embeds for TikTok and Dailymotion, and direct `<video>` playback of `.mp4/.webm/.mov/.m3u8…` when the page exposes a media `contentUrl`.
+
+## SaveFrom fallback
+
+When the native pipeline fails (JS-only page, login wall, missing thumbnail, no direct media URL), VideoVault falls back to SaveFrom (`js/downloads/downloadManager.js`):
+
+- **At save time** — if extraction came up empty, the extension asks SaveFrom for the title, thumbnail, duration, and a direct download URL and merges them into the saved record.
+- **At download time** — the Download button (on saved cards, browse cards, and the player) first uses any known direct URL; otherwise it tries SaveFrom's JSON endpoint and, if that is unavailable/Cloudflare-gated, opens **SaveFrom preloaded with the video** (`https://en.savefrom.net/?url=…`) in a new tab so you can still pick a format.
+- **On save/login barriers** — the notice dialog gains a **Try SaveFrom ↗** link for the video URL.
+
+Note: SaveFrom's historical public `helper.php?format=json` endpoint has been deprecated and may be Cloudflare-gated; the extension treats that as a normal miss and falls back to the SaveFrom app page, which always works from a real browser. The button inject snippet provided by SaveFrom (`sf-helper-agent.min.js`) is the one used on websites; the extension uses their app URL + best-effort API instead of injecting third-party scripts into pages.

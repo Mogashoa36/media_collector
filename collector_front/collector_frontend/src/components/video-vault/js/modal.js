@@ -46,18 +46,20 @@ export function playerSource(video) {
   return { type: 'iframe', src: url, external: url };
 }
 
-export function showPlayer(video, root) {
+export function showPlayer(video, root, handlers = {}) {
   let source;
   try { source = playerSource(video); } catch { source = { type: 'link', src: '', external: video.url || '' }; }
   const open = source.external ? `<a class="player-open" href="${escapeHtml(source.external)}" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>` : '';
+  const download = typeof handlers.download === 'function' ? '<button class="player-open download" data-player-download>Download</button>' : '';
   const player = source.type === 'link'
-    ? `<div class="video-unavailable"><strong>Playback unavailable inline</strong><span>${escapeHtml(source.external || video.platform || 'This platform')} blocks embedding, so VideoVault can't play it in the popup. Open it in a new tab to watch it.</span>${open}</div>`
+    ? `<div class="video-unavailable"><strong>Playback unavailable inline</strong><span>${escapeHtml(source.external || video.platform || 'This platform')} blocks embedding, so VideoVault can't play it in the popup. Open it in a new tab to watch it.</span>${open}${download}</div>`
     : source.type === 'video'
-    ? `<video class="video-player" src="${escapeHtml(source.src)}" controls autoplay playsinline>Your browser cannot play this video.</video>${open}`
-    : `<iframe class="video-player" src="${escapeHtml(source.src)}" title="${escapeHtml(video.title)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>${open}`;
+    ? `<video class="video-player" src="${escapeHtml(source.src)}" controls autoplay playsinline>Your browser cannot play this video.</video>${open}${download}`
+    : `<iframe class="video-player" src="${escapeHtml(source.src)}" title="${escapeHtml(video.title)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>${open}${download}`;
   root.innerHTML = `<div class="modal-backdrop player-backdrop"><section class="player-modal" role="dialog" aria-modal="true" aria-label="Playing ${escapeHtml(video.title)}"><button class="modal-close" data-modal-close aria-label="Close">×</button>${player}<div class="player-caption"><span class="modal-kicker">NOW PLAYING / ${escapeHtml(video.platform)}${video.video?.duration ? ` / ${formatDuration(video.video.duration)}` : ''}</span><h2>${escapeHtml(video.title)}</h2></div></section></div>`;
   root.querySelector('[data-modal-close]').onclick = () => root.innerHTML = '';
   root.querySelector('.modal-backdrop').onclick = event => { if (event.target.classList.contains('modal-backdrop')) root.innerHTML = ''; };
+  root.querySelector('[data-player-download]')?.addEventListener('click', event => { event.stopPropagation(); handlers.download(video); });
 }
 
 export function showDetails(video, root, handlers) {

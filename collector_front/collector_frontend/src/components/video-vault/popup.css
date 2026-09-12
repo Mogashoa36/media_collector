@@ -944,6 +944,19 @@ body.light-theme {
     text-decoration: none;
     font: 600 12px/1 'DM Sans', sans-serif;
     cursor: pointer;
+.card-download {
+    border: 0;
+    padding: 0 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.card-download:hover {
+    color: #8ab4f8;
+}
 }
 
 .player-open:hover {

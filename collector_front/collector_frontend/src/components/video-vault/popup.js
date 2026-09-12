@@ -7,7 +7,7 @@ import { adaptersFor, platforms } from './js/platforms/index.js';
 import { recommend } from './js/personalization/recommendationEngine.js';
 import { clearPersonalization, getPreferences, setPreferences } from './js/personalization/preferences.js';
 import { track } from './js/personalization/tracking.js';
-import { download, getDownloadOptions } from './js/downloads/downloadManager.js';
+import { download, getDownloadOptions, fetchSaveFromMetadata, saveFromPageUrl } from './js/downloads/downloadManager.js';
 
 const state = { videos: [], view: 'all', query: '', sort: 'newest', collection: '', source: '', selectionMode: false };
 const selectedVideos = new Set();
@@ -15,7 +15,13 @@ const selectionCountsKey = 'videovault-selection-counts';
 const $ = selector => document.querySelector(selector);
 const gallery = $('#gallery');
 function toast(message) { const element = $('#toast'); element.textContent = `✓  ${message}`; element.classList.add('show'); setTimeout(() => element.classList.remove('show'), 2600); }
-function openVideo(video) { track('opened', video); showPlayer(video, $('#modal-root')); }
+function openVideo(video) { track('opened', video); showPlayer(video, $('#modal-root'), { download: doDownload }); }
+async function doDownload(video) {
+  const result = await download(video);
+  if (result.status === 'downloaded') toast('Download started');
+  else if (result.status === 'savefrom') toast('SaveFrom opened — pick a format to download');
+  else toast('No download available for this video');
+}
 async function remove(video) { await storage.deleteVideo(video.id); await refresh(); toast('Video deleted'); }
 function closeModal() { $('#modal-root').innerHTML = ''; }
 function updateSelection(video, selected, card) { if (selected) { selectedVideos.add(video.id); const counts = JSON.parse(localStorage.getItem(selectionCountsKey) || '{}'); counts[video.id] = (counts[video.id] || 0) + 1; localStorage.setItem(selectionCountsKey, JSON.stringify(counts)); if (counts[video.id] >= 3 && !video.favorite) storage.updateVideo(video.id, { favorite: true }).then(() => toast('Frequently selected video added to Favorites')); } else selectedVideos.delete(video.id); card.classList.toggle('is-selected', selected); $('#selected-count').textContent = selectedVideos.size; $('#bulk-actions').hidden = selectedVideos.size === 0; }
@@ -36,7 +42,21 @@ async function saveVideoFromLink(url, title, tabMetadata = null) {
   if (tabMetadata?.contentUrl) metadata.contentUrl = tabMetadata.contentUrl;
   if (tabMetadata?.canonicalUrl) metadata.canonicalUrl = tabMetadata.canonicalUrl;
   showApiStatus(metadata.status || 'live', Boolean((metadata.status || 200) < 400));
-  if (metadata.requiresLogin && !tabMetadata?.title) await showLoginNotice(parsedUrl.hostname);
+  if (metadata.requiresLogin && !tabMetadata?.title) await showLoginNotice(parsedUrl.hostname, normalizedUrl);
+  // SaveFrom rescue: when the native pipeline came up empty (app-shell pages,
+  // login walls, missing thumbnails), ask SaveFrom for the title/thumbnail/direct URL.
+  if (metadata.unavailable || (!metadata.title && !metadata.thumbnail?.url)) {
+    $('#save-progress').textContent = 'Trying SaveFrom…';
+    const saveFrom = await fetchSaveFromMetadata(normalizedUrl);
+    if (saveFrom.ok) {
+      metadata.title = metadata.title || saveFrom.title;
+      metadata.contentUrl = metadata.contentUrl || saveFrom.url;
+      metadata.downloadUrl = saveFrom.url;
+      metadata.video = { ...(metadata.video || {}), duration: metadata.video?.duration || saveFrom.duration };
+      if (saveFrom.thumbnail) metadata.thumbnail = { ...(metadata.thumbnail || {}), url: saveFrom.thumbnail, source: metadata.thumbnail?.source || 'savefrom' };
+      $('#save-progress').textContent = 'Metadata restored via SaveFrom';
+    }
+  }
   $('#save-progress').textContent = 'Checking duplicates...';
   const candidate = { ...metadata, title: title.trim() || metadata.cleanedTitle || metadata.title || parsedUrl.hostname.replace(/^www\./, ''), url: normalizedUrl, pageUrl: normalizedUrl, contentUrl: metadata.contentUrl || '', canonicalUrl: metadata.canonicalUrl || normalizedUrl, platform: metadata.platform || detectPlatform(normalizedUrl), thumbnailData: metadata.thumbnail?.url ? metadata.thumbnail : { url: metadata.thumbnail || thumbnailFor(normalizedUrl), width: null, height: null, format: '', quality: 'standard', source: 'fallback', alternatives: [] }, metadata: { extractionMethod: metadata.extractionMethod || [], extractionSuccess: true } };
   const duplicate = await storage.findDuplicate(candidate);
@@ -54,12 +74,13 @@ async function saveVideoFromLink(url, title, tabMetadata = null) {
   const length = saved.video.duration ? formatDuration(saved.video.duration) : 'unavailable';
   toast(`Video saved: ${saved.title} | Thumbnail: ${size} | Platform: ${saved.platform} | Duration: ${length}`);
 }
-async function showLoginNotice(hostname) {
+async function showLoginNotice(hostname, videoUrl = '') {
   const source = sourceFor(`https://${hostname}`);
   const key = `videovault-login-notice:${source}`;
   if (localStorage.getItem(key)) return;
   const root = $('#modal-root');
-  root.innerHTML = `<div class="modal-backdrop"><section class="confirm-modal login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title"><span class="warning-icon">i</span><h2 id="login-title">Sign in to ${source}</h2><p>This site requires an account before its title and thumbnail can be read. Sign in on the site, then save the link again.</p><div><button class="secondary-button" data-login-dismiss>Not now</button><button class="primary-button" data-login-done>I've signed in</button></div></section></div>`;
+  const saveFrom = videoUrl ? `<a class="player-open" href="${saveFromPageUrl(videoUrl)}" target="_blank" rel="noopener noreferrer">Try SaveFrom ↗</a>` : '';
+  root.innerHTML = `<div class="modal-backdrop"><section class="confirm-modal login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title"><span class="warning-icon">i</span><h2 id="login-title">Sign in to ${source}</h2><p>This site requires an account before its title and thumbnail can be read. Sign in on the site and save again — or open the video in SaveFrom.</p><div>${saveFrom}<button class="secondary-button" data-login-dismiss>Not now</button><button class="primary-button" data-login-done>I've signed in</button></div></section></div>`;
   await new Promise(resolve => { root.querySelector('[data-login-dismiss]').onclick = () => { closeModal(); resolve(); }; root.querySelector('[data-login-done]').onclick = () => { localStorage.setItem(key, '1'); localStorage.setItem(`videovault-authenticated:${source}`, '1'); closeModal(); renderSources(); resolve(); }; });
 }
 async function showSaveLinkForm(tabMetadata = null) {
@@ -87,10 +108,10 @@ function render() {
   if (state.view === 'browse') return renderBrowse();
   if (state.view === 'settings') return renderSettings();
   if (state.view === 'collections') return renderCollections();
-  renderGallery(gallery, visible, { hasSearch: Boolean(state.query), open: openVideo, select: updateSelection, save: saveCurrentVideo, favorite: async video => { await storage.toggleFavorite(video.id); await refresh(); toast(video.favorite ? 'Removed from favorites' : 'Added to favorites'); }, details: video => showDetails(video, $('#modal-root'), { open: openVideo, favorite: async item => { await storage.toggleFavorite(item.id); await refresh(); }, confirmDelete: item => confirmDelete(item, $('#modal-root'), () => remove(item)) }) });
+  renderGallery(gallery, visible, { hasSearch: Boolean(state.query), open: openVideo, select: updateSelection, save: saveCurrentVideo, canDownload: video => getDownloadOptions(video).supported, download: doDownload, favorite: async video => { await storage.toggleFavorite(video.id); await refresh(); toast(video.favorite ? 'Removed from favorites' : 'Added to favorites'); }, details: video => showDetails(video, $('#modal-root'), { open: openVideo, favorite: async item => { await storage.toggleFavorite(item.id); await refresh(); }, confirmDelete: item => confirmDelete(item, $('#modal-root'), () => remove(item)) }) });
 }
 function browseCard(video) { const thumbnail = typeof video.thumbnail === 'object' ? video.thumbnail : { url: video.thumbnail }; const duration = video.video?.duration; const downloadAvailable = getDownloadOptions(video).supported; return `<article class="browse-card"><img loading="lazy" src="${thumbnail.url || ''}" alt=""><div><h3>${video.title || 'Untitled video'}</h3><p>${video.platform || 'Unknown'}${duration ? ` • ${formatDuration(duration)}` : ''}</p><button data-browse-save>+ Save</button>${downloadAvailable ? '<button data-browse-download>Download</button>' : ''}</div></article>`; }
-async function renderBrowse() { const active = state.browsePlatform || ''; const videos = recommend(state.videos.filter(video => !active || video.platform === active), 12); gallery.innerHTML = `<section class="browse-dashboard"><div class="browse-title"><div><span class="eyebrow">DISCOVER</span><h2>Browse</h2></div><button id="browse-refresh" class="select-mode" type="button">↻ Refresh</button></div><p class="browse-note">Choose a source or discover the public page in your active tab.</p><div class="platform-picker">${[...platforms.filter(platform => platform !== 'Facebook'), 'Other websites'].map(platform => `<button class="platform-option ${active === platform ? 'selected' : ''}" data-platform="${platform}">${platform}</button>`).join('')}</div><button id="discover-active" class="primary-button" type="button">Discover active tab</button><h3>For You</h3><div class="browse-grid">${videos.map(browseCard).join('') || '<p class="browse-empty">Choose a platform or save videos to build your feed.</p>'}</div><h3>Trending</h3><p class="browse-empty">Trending is unavailable without an official platform feed.</p></section>`; gallery.querySelectorAll('[data-platform]').forEach(button => button.onclick = () => { state.browsePlatform = button.dataset.platform === 'Other websites' ? 'Other' : button.dataset.platform; renderBrowse(); }); $('#browse-refresh').onclick = () => renderBrowse(); $('#discover-active').onclick = discoverActiveTab; gallery.querySelectorAll('[data-browse-save]').forEach((button, index) => button.onclick = async () => { const duplicate = await storage.findDuplicate(videos[index]); if (duplicate) return toast('Already in Gallery'); await storage.saveVideo(videos[index]); track('saved', videos[index]); toast('Saved to Gallery'); }); gallery.querySelectorAll('[data-browse-download]').forEach((button, index) => button.onclick = () => download(videos[index])); }
+async function renderBrowse() { const active = state.browsePlatform || ''; const videos = recommend(state.videos.filter(video => !active || video.platform === active), 12); gallery.innerHTML = `<section class="browse-dashboard"><div class="browse-title"><div><span class="eyebrow">DISCOVER</span><h2>Browse</h2></div><button id="browse-refresh" class="select-mode" type="button">↻ Refresh</button></div><p class="browse-note">Choose a source or discover the public page in your active tab.</p><div class="platform-picker">${[...platforms.filter(platform => platform !== 'Facebook'), 'Other websites'].map(platform => `<button class="platform-option ${active === platform ? 'selected' : ''}" data-platform="${platform}">${platform}</button>`).join('')}</div><button id="discover-active" class="primary-button" type="button">Discover active tab</button><h3>For You</h3><div class="browse-grid">${videos.map(browseCard).join('') || '<p class="browse-empty">Choose a platform or save videos to build your feed.</p>'}</div><h3>Trending</h3><p class="browse-empty">Trending is unavailable without an official platform feed.</p></section>`; gallery.querySelectorAll('[data-platform]').forEach(button => button.onclick = () => { state.browsePlatform = button.dataset.platform === 'Other websites' ? 'Other' : button.dataset.platform; renderBrowse(); }); $('#browse-refresh').onclick = () => renderBrowse(); $('#discover-active').onclick = discoverActiveTab; gallery.querySelectorAll('[data-browse-save]').forEach((button, index) => button.onclick = async () => { const duplicate = await storage.findDuplicate(videos[index]); if (duplicate) return toast('Already in Gallery'); await storage.saveVideo(videos[index]); track('saved', videos[index]); toast('Saved to Gallery'); }); gallery.querySelectorAll('[data-browse-download]').forEach((button, index) => button.onclick = () => doDownload(videos[index])); }
 async function discoverActiveTab() { if (typeof chrome === 'undefined' || !chrome.tabs?.query) return toast('Open a public website in Chrome first'); const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); const adapter = adaptersFor(tab?.url || '')[0]; if (!adapter) return toast('No public page found'); const result = await adapter.getFeed(); if (!result.supported) return toast(result.reason || 'Feed unavailable'); state.videos = [...result.videos, ...state.videos]; state.browsePlatform = result.videos[0].platform; renderBrowse(); toast('Active page discovered'); }
 function renderSettings() { const preferences = getPreferences(); gallery.innerHTML = `<section class="settings-panel"><span class="eyebrow">PREFERENCES</span><h2>Personalization</h2>${[['enabled', 'Personalize recommendations'], ['trackSaved', 'Track saved videos'], ['trackFavorites', 'Track favorites'], ['trackViewing', 'Track viewing interactions'], ['cloud', 'Use cloud personalization']].map(([key, label]) => `<label><input type="checkbox" data-pref="${key}" ${preferences[key] ? 'checked' : ''}>${label}</label>`).join('')}<button id="clear-personalization" class="danger-button" type="button">Clear Personalization Data</button></section>`; gallery.querySelectorAll('[data-pref]').forEach(input => input.onchange = () => setPreferences({ [input.dataset.pref]: input.checked })); $('#clear-personalization').onclick = () => { if (window.confirm('Reset your recommendations?')) { clearPersonalization(); toast('Personalization data cleared'); } }; }
 function renderSources() {
